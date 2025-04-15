@@ -1,3 +1,6 @@
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 import torch
 import torch.nn as nn
@@ -149,6 +152,8 @@ if __name__ == "__main__":
         model.eval()
         correct = 0
         total = 0
+        val_preds, val_gold = [], []
+
         random.shuffle(valid_data)
         print("Validation started for epoch {}".format(epoch + 1))
         valid_data = valid_data
@@ -161,14 +166,24 @@ if __name__ == "__main__":
 
             vectors = torch.tensor(vectors).view(len(vectors), 1, -1)
             output = model(vectors)
-            predicted_label = torch.argmax(output)
+            predicted_label = torch.argmax(output).item()
+
+            val_preds.append(predicted_label)
+            val_gold.append(gold_label)
+            
             correct += int(predicted_label == gold_label)
             total += 1
             # print(predicted_label, gold_label)
+
+        # Compute precision, recall, F1 (macro avg)
+        val_precision, val_recall, val_f1, _ = precision_recall_fscore_support(
+            val_gold, val_preds, average='macro', zero_division=0
+        )
+        print("Precision: {:.4f}, Recall: {:.4f}, F1: {:.4f}".format(val_precision, val_recall, val_f1))
         print("Validation completed for epoch {}".format(epoch + 1))
         print("Validation accuracy for epoch {}: {}".format(epoch + 1, correct / total))
-        validation_accuracy = correct/total
 
+        validation_accuracy = correct/total
         if validation_accuracy < last_validation_accuracy and trainning_accuracy > last_train_accuracy:
             stopping_condition=True
             print("Training done to avoid overfitting!")

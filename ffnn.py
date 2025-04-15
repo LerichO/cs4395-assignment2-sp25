@@ -1,3 +1,6 @@
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+from sklearn.metrics import precision_recall_fscore_support
 import numpy as np
 import torch
 import torch.nn as nn
@@ -125,7 +128,19 @@ if __name__ == "__main__":
     valid_data = convert_to_vector_representation(valid_data, word2index)
 
     # list to store results for each epoch    
-    results = []
+    results = {
+        "epoch": [],
+        "train_acc": [],
+        "val_acc": [],
+        "train_loss": [],
+        "val_loss": [],
+        "train_precision": [],
+        "train_recall": [],
+        "train_f1": [],
+        "val_precision": [],
+        "val_recall": [],
+        "val_f1": []
+    }
 
     model = FFNN(input_dim = len(vocab), h = args.hidden_dim)
     optimizer = optim.SGD(model.parameters(),lr=0.01, momentum=0.9)
@@ -168,6 +183,8 @@ if __name__ == "__main__":
         val_loss = None
         val_correct = 0
         val_total = 0
+        val_preds, val_gold = [], []
+
         start_time = time.time()
         print("Validation started for epoch {}".format(epoch + 1))
         minibatch_size = 16 
@@ -178,26 +195,111 @@ if __name__ == "__main__":
             for example_index in range(minibatch_size):
                 input_vector, gold_label = valid_data[minibatch_index * minibatch_size + example_index]
                 predicted_vector = model(input_vector)
-                predicted_label = torch.argmax(predicted_vector)
+                predicted_label = torch.argmax(predicted_vector).item()
+
+                val_preds.append(predicted_label)
+                val_gold.append(gold_label)
+
                 val_correct += int(predicted_label == gold_label)
                 val_total += 1
+
                 example_loss = model.compute_Loss(predicted_vector.view(1,-1), torch.tensor([gold_label]))
                 if val_loss is None:
                     val_loss = example_loss
                 else:
                     val_loss += example_loss
             val_loss = val_loss / minibatch_size
+
         val_acc = val_correct / val_total
+
+        # Compute precision, recall, F1 (macro avg)
+        val_precision, val_recall, val_f1, _ = precision_recall_fscore_support(
+            val_gold, val_preds, average='macro', zero_division=0
+        )
+
         print("Validation completed for epoch {}".format(epoch + 1))
-        print("Validation accuracy for epoch {}: {}".format(epoch + 1, val_correct / val_total))
-        print("Validation time for this epoch: {}".format(time.time() - start_time))
-        
-        results.append((epoch + 1, train_acc, val_acc))
+        print("Validation accuracy: {:.4f}".format(val_acc))
+        print("Precision: {:.4f}, Recall: {:.4f}, F1: {:.4f}".format(val_precision, val_recall, val_f1))
+        print("Validation time for this epoch: {:.2f}s".format(time.time() - start_time))
+
+        # Save results
+        results["epoch"].append(epoch + 1)
+        results["val_acc"].append(val_acc)
+        results["val_loss"].append(val_loss.item())
+        results["val_precision"].append(val_precision)
+        results["val_recall"].append(val_recall)
+        results["val_f1"].append(val_f1)
+        results["train_acc"].append(train_acc)
+        results["train_loss"].append(train_loss.item())
+
 
     print("\n========== Training Summary ==========")
-    print("{:<10s}{:<20s}{:<20s}".format("Epoch", "Training Accuracy", "Validation Accuracy"))
-    for epoch, train_acc, val_acc in results:
-        print("{:<10d}{:<20.4f}{:<20.4f}".format(epoch, train_acc, val_acc))
+    print("{:<10s}{:<20s}{:<20s}{:<20s}{:<20s}".format("Epoch", "Train Accuracy", "Val Accuracy", "Train Loss", "Val Loss"))
+    for i in range(len(results["epoch"])):
+        print("{:<10d}{:<20.4f}{:<20.4f}{:<20.4f}{:<20.4f}".format(
+            results["epoch"][i],
+            results["train_acc"][i],
+            results["val_acc"][i],
+            results["train_loss"][i],
+            results["val_loss"][i]
+        ))
+
+    best_val_acc = max(results["val_acc"])
+    final_val_acc = results["val_acc"][-1]
+    print("BEST VALIDATION ACCURACY:", best_val_acc)
+    print("FINAL VALIDATION ACCURACY:", final_val_acc)
+
+
+    plt.figure(figsize=(18, 10))  # Bigger canvas for more subplots
+
+    # Accuracy plot
+    plt.subplot(2, 3, 1)
+    plt.plot(results["epoch"], results["val_acc"], label='Validation Accuracy', marker='o')
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.title("Validation Accuracy")
+    plt.legend()
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    # Loss plot
+    plt.subplot(2, 3, 2)
+    plt.plot(results["epoch"], results["val_loss"], label='Validation Loss', marker='o')
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Validation Loss")
+    plt.legend()
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    # Precision plot
+    plt.subplot(2, 3, 3)
+    plt.plot(results["epoch"], results["val_precision"], label='Validation Precision', marker='o', color='orange')
+    plt.xlabel("Epoch")
+    plt.ylabel("Precision")
+    plt.title("Validation Precision")
+    plt.legend()
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    # Recall plot
+    plt.subplot(2, 3, 4)
+    plt.plot(results["epoch"], results["val_recall"], label='Validation Recall', marker='o', color='green')
+    plt.xlabel("Epoch")
+    plt.ylabel("Recall")
+    plt.title("Validation Recall")
+    plt.legend()
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    # F1 Score plot
+    plt.subplot(2, 3, 5)
+    plt.plot(results["epoch"], results["val_f1"], label='Validation F1 Score', marker='o', color='red')
+    plt.xlabel("Epoch")
+    plt.ylabel("F1 Score")
+    plt.title("Validation F1 Score")
+    plt.legend()
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    plt.tight_layout()
+    plt.savefig("ffnn_metrics_dim{}.png".format(args.hidden_dim))
+    plt.show()
 
     # write out to results/test.out
     
