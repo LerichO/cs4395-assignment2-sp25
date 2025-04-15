@@ -32,10 +32,14 @@ class FFNN(nn.Module):
 
     def forward(self, input_vector):
         # [to fill] obtain first hidden layer representation
+        hidden_layer = self.W1(input_vector)
+        hidden_layer = self.activation(hidden_layer)
 
         # [to fill] obtain output layer representation
+        output_layer = self.W2(hidden_layer)
 
         # [to fill] obtain probability dist.
+        predicted_vector = self.softmax(output_layer)
 
         return predicted_vector
 
@@ -119,7 +123,9 @@ if __name__ == "__main__":
     print("========== Vectorizing data ==========")
     train_data = convert_to_vector_representation(train_data, word2index)
     valid_data = convert_to_vector_representation(valid_data, word2index)
-    
+
+    # list to store results for each epoch    
+    results = []
 
     model = FFNN(input_dim = len(vocab), h = args.hidden_dim)
     optimizer = optim.SGD(model.parameters(),lr=0.01, momentum=0.9)
@@ -127,9 +133,10 @@ if __name__ == "__main__":
     for epoch in range(args.epochs):
         model.train()
         optimizer.zero_grad()
-        loss = None
-        correct = 0
-        total = 0
+        
+        train_loss = None
+        train_correct = 0
+        train_total = 0
         start_time = time.time()
         print("Training started for epoch {}".format(epoch + 1))
         random.shuffle(train_data) # Good practice to shuffle order of training data
@@ -137,51 +144,60 @@ if __name__ == "__main__":
         N = len(train_data) 
         for minibatch_index in tqdm(range(N // minibatch_size)):
             optimizer.zero_grad()
-            loss = None
+            train_loss = None
             for example_index in range(minibatch_size):
                 input_vector, gold_label = train_data[minibatch_index * minibatch_size + example_index]
                 predicted_vector = model(input_vector)
                 predicted_label = torch.argmax(predicted_vector)
-                correct += int(predicted_label == gold_label)
-                total += 1
+                train_correct += int(predicted_label == gold_label)
+                train_total += 1
                 example_loss = model.compute_Loss(predicted_vector.view(1,-1), torch.tensor([gold_label]))
-                if loss is None:
-                    loss = example_loss
+                if train_loss is None:
+                    train_loss = example_loss
                 else:
-                    loss += example_loss
-            loss = loss / minibatch_size
-            loss.backward()
+                    train_loss += example_loss
+            train_loss = train_loss / minibatch_size
+            train_loss.backward()
             optimizer.step()
+        train_acc = train_correct / train_total
         print("Training completed for epoch {}".format(epoch + 1))
-        print("Training accuracy for epoch {}: {}".format(epoch + 1, correct / total))
+        print("Training accuracy for epoch {}: {}".format(epoch + 1, train_correct / train_total))
         print("Training time for this epoch: {}".format(time.time() - start_time))
 
 
-        loss = None
-        correct = 0
-        total = 0
+        val_loss = None
+        val_correct = 0
+        val_total = 0
         start_time = time.time()
         print("Validation started for epoch {}".format(epoch + 1))
         minibatch_size = 16 
         N = len(valid_data) 
         for minibatch_index in tqdm(range(N // minibatch_size)):
             optimizer.zero_grad()
-            loss = None
+            val_loss = None
             for example_index in range(minibatch_size):
                 input_vector, gold_label = valid_data[minibatch_index * minibatch_size + example_index]
                 predicted_vector = model(input_vector)
                 predicted_label = torch.argmax(predicted_vector)
-                correct += int(predicted_label == gold_label)
-                total += 1
+                val_correct += int(predicted_label == gold_label)
+                val_total += 1
                 example_loss = model.compute_Loss(predicted_vector.view(1,-1), torch.tensor([gold_label]))
-                if loss is None:
-                    loss = example_loss
+                if val_loss is None:
+                    val_loss = example_loss
                 else:
-                    loss += example_loss
-            loss = loss / minibatch_size
+                    val_loss += example_loss
+            val_loss = val_loss / minibatch_size
+        val_acc = val_correct / val_total
         print("Validation completed for epoch {}".format(epoch + 1))
-        print("Validation accuracy for epoch {}: {}".format(epoch + 1, correct / total))
+        print("Validation accuracy for epoch {}: {}".format(epoch + 1, val_correct / val_total))
         print("Validation time for this epoch: {}".format(time.time() - start_time))
+        
+        results.append((epoch + 1, train_acc, val_acc))
+
+    print("\n========== Training Summary ==========")
+    print("{:<10s}{:<20s}{:<20s}".format("Epoch", "Training Accuracy", "Validation Accuracy"))
+    for epoch, train_acc, val_acc in results:
+        print("{:<10d}{:<20.4f}{:<20.4f}".format(epoch, train_acc, val_acc))
 
     # write out to results/test.out
     
